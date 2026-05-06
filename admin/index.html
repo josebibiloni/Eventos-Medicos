@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel - Eventos Médicos</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --medical-blue: #0ea5e9;
+      --medical-dark: #0c4a6e;
+      --bg-primary: #ffffff;
+      --bg-secondary: #f8fafc;
+      --text-primary: #0f172a;
+      --text-secondary: #64748b;
+      --border: #e2e8f0;
+    }
+    
+    * {
+      font-family: 'Inter', sans-serif;
+    }
+    
+    h1, h2, h3, h4, h5, h6, .font-mono {
+      font-family: 'IBM Plex Mono', monospace;
+      letter-spacing: -0.02em;
+    }
+    
+    body {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+    
+    .card {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+    }
+    
+    .btn-primary {
+      background: var(--medical-blue);
+      color: white;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.375rem;
+      font-weight: 500;
+      transition: all 0.2s;
+      border: none;
+      cursor: pointer;
+    }
+    
+    .btn-primary:hover {
+      background: var(--medical-dark);
+      transform: translateY(-1px);
+    }
+    
+    .stat-card {
+      background: linear-gradient(135deg, var(--medical-blue) 0%, var(--medical-dark) 100%);
+      color: white;
+      padding: 1.5rem;
+      border-radius: 0.5rem;
+    }
+    
+    input, select {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 0.375rem;
+      background: var(--bg-primary);
+      font-size: 0.875rem;
+    }
+    
+    input:focus, select:focus {
+      outline: 2px solid var(--medical-blue);
+      outline-offset: 2px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    
+    th {
+      text-align: left;
+      padding: 1rem;
+      background: var(--bg-secondary);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+    }
+    
+    td {
+      padding: 1rem;
+      border-top: 1px solid var(--border);
+    }
+    
+    tr:hover {
+      background: var(--bg-secondary);
+    }
+    
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    
+    .badge-success {
+      background: #dcfce7;
+      color: #166534;
+    }
+    
+    .badge-danger {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    
+    // Inicializar Supabase
+    const supabase = window.supabase.createClient(
+      'https://fycclwcxutzxraheggsj.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5Y2Nsd2N4dXR6eHJhaGVnZ3NqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTU2MzA4OTksImV4cCI6MjAzMTIwNjg5OX0.q5pYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqY'
+    );
+    
+    // Componente Login
+    function LoginScreen({ onLogin }) {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      
+      async function handleLogin(e) {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password
+          });
+          
+          if (error) throw error;
+          onLogin(data.user);
+        } catch (err) {
+          setError(err.message || 'Error al iniciar sesión');
+        } finally {
+          setLoading(false);
+        }
+      }
+      
+      return (
+        <div style={{ 
+          minHeight: '100vh', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          background: 'linear-gradient(135deg, #0ea5e9 0%, #0c4a6e 100%)'
+        }}>
+          <div className="card" style={{ width: '100%', maxWidth: '400px', padding: '2rem' }}>
+            <h1 style={{ fontSize: '1.5rem', marginBottom: '0.5rem', fontWeight: 700 }}>
+              Admin Panel
+            </h1>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', fontSize: '0.875rem' }}>
+              Sistema de gestión de eventos médicos
+            </p>
+            
+            <form onSubmit={handleLogin}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                  Email
+                </label>
+                <input 
+                  type="email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  placeholder="tu@email.com"
+                />
+              </div>
+              
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: 500 }}>
+                  Password
+                </label>
+                <input 
+                  type="password" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  placeholder="••••••••"
+                />
+              </div>
+              
+              {error && (
+                <div style={{ 
+                  padding: '0.75rem', 
+                  background: '#fee2e2', 
+                  color: '#991b1b',
+                  borderRadius: '0.375rem',
+                  marginBottom: '1rem',
+                  fontSize: '0.875rem'
+                }}>
+                  {error}
+                </div>
+              )}
+              
+              <button 
+                type="submit" 
+                className="btn-primary" 
+                disabled={loading}
+                style={{ width: '100%' }}
+              >
+                {loading ? 'Ingresando...' : 'Ingresar'}
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+    
+    // Componente Dashboard Super Admin
+    function SuperAdminDashboard({ user, onLogout }) {
+      const [stats, setStats] = useState({ companies: 0, leads: 0, staff: 0 });
+      const [companies, setCompanies] = useState([]);
+      const [leads, setLeads] = useState([]);
+      const [activeTab, setActiveTab] = useState('dashboard');
+      
+      useEffect(() => {
+        loadData();
+      }, []);
+      
+      async function loadData() {
+        try {
+          // Cargar companies
+          const { data: companiesData } = await supabase
+            .from('companies')
+            .select('*')
+            .order('name');
+          
+          // Cargar leads
+          const { data: leadsData } = await supabase
+            .from('leads')
+            .select('*, companies(name)')
+            .order('created_at', { ascending: false })
+            .limit(100);
+          
+          // Cargar staff
+          const { data: staffData } = await supabase
+            .from('staff')
+            .select('id');
+          
+          setCompanies(companiesData || []);
+          setLeads(leadsData || []);
+          setStats({
+            companies: companiesData?.length || 0,
+            leads: leadsData?.length || 0,
+            staff: staffData?.length || 0
+          });
+        } catch (err) {
+          console.error('Error cargando datos:', err);
+        }
+      }
+      
+      return (
+        <div style={{ minHeight: '100vh' }}>
+          {/* Header */}
+          <div style={{ 
+            background: 'white', 
+            borderBottom: '1px solid var(--border)',
+            padding: '1rem 2rem',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <div>
+              <h1 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Admin Panel</h1>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                {user.email} · Super Admin
+              </p>
+            </div>
+            <button onClick={onLogout} style={{ 
+              padding: '0.5rem 1rem',
+              border: '1px solid var(--border)',
+              borderRadius: '0.375rem',
+              background: 'white',
+              cursor: 'pointer',
+              fontSize: '0.875rem'
+            }}>
+              Cerrar sesión
+            </button>
+          </div>
+          
+          {/* Tabs */}
+          <div style={{ 
+            background: 'white', 
+            borderBottom: '1px solid var(--border)',
+            padding: '0 2rem'
+          }}>
+            <div style={{ display: 'flex', gap: '2rem' }}>
+              {['dashboard', 'empresas', 'leads'].map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  style={{
+                    padding: '1rem 0',
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                    fontSize: '0.875rem',
+                    borderBottom: activeTab === tab ? '2px solid var(--medical-blue)' : '2px solid transparent',
+                    color: activeTab === tab ? 'var(--medical-blue)' : 'var(--text-secondary)',
+                    textTransform: 'capitalize'
+                  }}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          {/* Contenido */}
+          <div style={{ padding: '2rem' }}>
+            {activeTab === 'dashboard' && (
+              <>
+                {/* Stats */}
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                  gap: '1.5rem',
+                  marginBottom: '2rem'
+                }}>
+                  <div className="stat-card">
+                    <div style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+                      {stats.companies}
+                    </div>
+                    <div style={{ opacity: 0.9, fontSize: '0.875rem' }}>Empresas</div>
+                  </div>
+                  <div className="stat-card">
+                    <div style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+                      {stats.leads}
+                    </div>
+                    <div style={{ opacity: 0.9, fontSize: '0.875rem' }}>Leads Total</div>
+                  </div>
+                  <div className="stat-card">
+                    <div style={{ fontSize: '2rem', fontWeight: 700, marginBottom: '0.5rem' }}>
+                      {stats.staff}
+                    </div>
+                    <div style={{ opacity: 0.9, fontSize: '0.875rem' }}>Staff Total</div>
+                  </div>
+                </div>
+                
+                {/* Últimos leads */}
+                <div className="card" style={{ padding: '1.5rem' }}>
+                  <h2 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '1rem' }}>
+                    Últimos Leads Capturados
+                  </h2>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Nombre</th>
+                          <th>Email</th>
+                          <th>Empresa</th>
+                          <th>Fecha</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {leads.slice(0, 10).map(lead => (
+                          <tr key={lead.id}>
+                            <td style={{ fontWeight: 500 }}>{lead.name}</td>
+                            <td>{lead.email}</td>
+                            <td>
+                              <span className="badge badge-success">
+                                {lead.companies?.name || lead.company_id}
+                              </span>
+                            </td>
+                            <td style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                              {new Date(lead.created_at).toLocaleDateString('es-AR')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+            
+            {activeTab === 'empresas' && (
+              <div className="card" style={{ padding: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <h2 style={{ fontSize: '1.125rem', fontWeight: 600 }}>Empresas</h2>
+                  <button className="btn-primary">+ Nueva Empresa</button>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Nombre</th>
+                      <th>ID</th>
+                      <th>País</th>
+                      <th>Estado</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {companies.map(company => (
+                      <tr key={company.id}>
+                        <td style={{ fontWeight: 500 }}>{company.name}</td>
+                        <td style={{ fontFamily: 'IBM Plex Mono', fontSize: '0.875rem' }}>
+                          {company.id}
+                        </td>
+                        <td>{company.countries?.[0] || '-'}</td>
+                        <td>
+                          <span className={`badge ${company.active ? 'badge-success' : 'badge-danger'}`}>
+                            {company.active ? 'Activo' : 'Inactivo'}
+                          </span>
+                        </td>
+                        <td>
+                          <button style={{ 
+                            padding: '0.25rem 0.75rem',
+                            border: '1px solid var(--border)',
+                            borderRadius: '0.25rem',
+                            background: 'white',
+                            cursor: 'pointer',
+                            fontSize: '0.875rem'
+                          }}>
+                            Editar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            
+            {activeTab === 'leads' && (
+              <div className="card" style={{ padding: '1.5rem' }}>
+                <h2 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '1.5rem' }}>
+                  Todos los Leads
+                </h2>
+                <div style={{ overflowX: 'auto' }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Nombre</th>
+                        <th>Email</th>
+                        <th>Empresa</th>
+                        <th>Staff</th>
+                        <th>Fecha</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {leads.map(lead => (
+                        <tr key={lead.id}>
+                          <td style={{ fontWeight: 500 }}>{lead.name}</td>
+                          <td>{lead.email}</td>
+                          <td>
+                            <span className="badge badge-success">
+                              {lead.companies?.name || lead.company_id}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: '0.875rem' }}>{lead.staff_name || '-'}</td>
+                          <td style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                            {new Date(lead.created_at).toLocaleDateString('es-AR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+    
+    // App Principal
+    function App() {
+      const [user, setUser] = useState(null);
+      const [loading, setLoading] = useState(true);
+      
+      useEffect(() => {
+        checkUser();
+        
+        // Escuchar cambios de auth
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+          setUser(session?.user || null);
+        });
+        
+        return () => subscription.unsubscribe();
+      }, []);
+      
+      async function checkUser() {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          setUser(session?.user || null);
+        } catch (err) {
+          console.error('Error checking user:', err);
+        } finally {
+          setLoading(false);
+        }
+      }
+      
+      async function handleLogout() {
+        await supabase.auth.signOut();
+        setUser(null);
+      }
+      
+      if (loading) {
+        return (
+          <div style={{ 
+            minHeight: '100vh', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            fontSize: '1.125rem',
+            color: 'var(--text-secondary)'
+          }}>
+            Cargando...
+          </div>
+        );
+      }
+      
+      if (!user) {
+        return <LoginScreen onLogin={setUser} />;
+      }
+      
+      return <SuperAdminDashboard user={user} onLogout={handleLogout} />;
+    }
+    
+    // Render
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
