@@ -8,7 +8,7 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -130,11 +130,16 @@
   <script type="text/babel">
     const { useState, useEffect } = React;
     
+    // Verificar que Supabase esté cargado
+    if (!window.supabase) {
+      alert('Error: Supabase library failed to load');
+    }
+    
     // Inicializar Supabase
-    const supabase = window.supabase.createClient(
-      'https://fycclwcxutzxraheggsj.supabase.co',
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5Y2Nsd2N4dXR6eHJhaGVnZ3NqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTU2MzA4OTksImV4cCI6MjAzMTIwNjg5OX0.q5pYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqYqY'
-    );
+    const SUPABASE_URL = 'https://fycclwcxutzxraheggsj.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5Y2Nsd2N4dXR6eHJhaGVnZ3NqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzE1MjMsImV4cCI6MjA5MzE0NzUyM30.5wj_Z62ENoe26mx0o-FsvH5zPls2nNxTxiPxTTB_J-8';
+    
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
     // Componente Login
     function LoginScreen({ onLogin }) {
