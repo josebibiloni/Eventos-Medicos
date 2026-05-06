@@ -388,7 +388,7 @@
                       <tbody>
                         {leads.slice(0, 10).map(lead => (
                           <tr key={lead.id}>
-                            <td style={{ fontWeight: 500 }}>{lead.name}</td>
+                            <td style={{ fontWeight: 500 }}>{lead.nombre || '-'}</td>
                             <td>{lead.email}</td>
                             <td>
                               <span className="badge badge-success">
@@ -474,7 +474,7 @@
                     <tbody>
                       {leads.map(lead => (
                         <tr key={lead.id}>
-                          <td style={{ fontWeight: 500 }}>{lead.name}</td>
+                          <td style={{ fontWeight: 500 }}>{lead.nombre || '-'}</td>
                           <td>{lead.email}</td>
                           <td>
                             <span className="badge badge-success">
