@@ -2,9 +2,20 @@
 <html lang="es-AR">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<!-- Permitir zoom (importante para presbicia) pero sin deformar el layout inicial -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="theme-color" content="#1F4E79" />
-<title>Captura de leads · Ferias médicas · MVP</title>
+<meta name="description" content="Captura de leads para ferias y congresos médicos" />
+<meta name="mobile-web-app-capable" content="yes" />
+<!-- iOS PWA -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="MKT Médico" />
+<link rel="apple-touch-icon" href="/icons/icon-192.png" />
+<link rel="apple-touch-startup-image" href="/icons/splash-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" />
+<!-- Manifest PWA -->
+<link rel="manifest" href="/manifest.json" />
+<title>MKT para Eventos Médicos</title>
 <style>
   :root {
     --primary: #1F4E79;
@@ -954,6 +965,8 @@ const ACCESS_HASH = 'dc091e2936acae646078be694deac4d22a533e19cdd67be2efa6d812fcc
 // Al cargar, verificar si ya se desbloqueó en esta sesión
 if (sessionStorage.getItem('access_unlocked') === 'true') {
   document.getElementById('access-gate').style.display = 'none';
+  // Si ya estaba desbloqueado (recarga), el auto-setup corre cuando el main script está listo
+  window._runAutoSetupOnLoad = true;
 }
 
 // Enter en el input dispara el check
@@ -977,6 +990,8 @@ async function checkAccessCode() {
   if (hash === ACCESS_HASH) {
     sessionStorage.setItem('access_unlocked', 'true');
     document.getElementById('access-gate').style.display = 'none';
+    // Disparar auto-setup de Supabase (el main script ya cargó)
+    if (typeof autoSetupSupabase === 'function') autoSetupSupabase();
   } else {
     document.getElementById('access-error').textContent = 'Código incorrecto';
     document.getElementById('access-code-input').value = '';
@@ -987,8 +1002,8 @@ async function checkAccessCode() {
 
 <div class="topbar">
   <div>
-    <div class="logo" id="brand-name">Sirex Médica</div>
-    <div class="meta" id="event-name">Congreso SAC 2026 · Buenos Aires</div>
+    <div class="logo" id="brand-name">MKT para Eventos Médicos</div>
+    <div class="meta" id="event-name">Escaneá un QR o entrá al admin</div>
   </div>
   <div class="pills-wrap">
     <span class="staff-active-badge hidden" id="staff-badge" onclick="staffLogout()">
@@ -1242,17 +1257,17 @@ async function checkAccessCode() {
   </div>
 
   <div id="staff-form" class="card hidden">
-    <h2 style="font-size: 18px;">Datos del lead <span class="badge" style="background: var(--success-bg); color: var(--success-text);">● auto-completado por OCR</span></h2>
+    <h2 style="font-size: 18px;">Datos del lead <span id="ocr-badge" class="badge" style="display:none; background: var(--success-bg); color: var(--success-text);">● auto-completado por OCR</span></h2>
     <label class="field-label">Nombre completo</label>
-    <input id="sf-name" type="text" value="Dr. Juan Pérez" />
+    <input id="sf-name" type="text" placeholder="Nombre del médico" />
     <label class="field-label">Especialidad</label>
-    <input id="sf-spec" type="text" value="Cardiología" />
+    <input id="sf-spec" type="text" placeholder="Cardiología, Clínica médica..." />
     <label class="field-label">Institución</label>
-    <input id="sf-org" type="text" value="Sanatorio Itoiz" />
+    <input id="sf-org" type="text" placeholder="Hospital, Clínica..." />
     <label class="field-label">WhatsApp</label>
-    <input id="sf-phone" type="tel" value="+54 9 11 5555 1234" />
+    <input id="sf-phone" type="tel" placeholder="9 11 1234 5678" />
     <label class="field-label">Email</label>
-    <input id="sf-email" type="email" value="j.perez@itoiz.com.ar" />
+    <input id="sf-email" type="email" placeholder="medico@hospital.com" />
 
     <label class="field-label">⭐ Lead Score (calidad del contacto)</label>
     <div class="star-rating" id="sf-stars">
@@ -1319,16 +1334,78 @@ async function checkAccessCode() {
   <div class="modal-card" style="max-width: 440px;">
     <button class="modal-close-btn" onclick="closeScanModal()" aria-label="Cerrar">✕</button>
     <h3>📷 Escanear QR de acceso</h3>
-    <div class="modal-sub">Apuntá la cámara al QR del booth · o pegá el código manualmente</div>
-    <div class="scan-window" style="margin: 14px 0;">
-      <div class="scan-line"></div>
-      📷
+    <div class="modal-sub" id="scan-modal-sub">Apuntá la cámara al QR del booth</div>
+
+    <!-- Vista de cámara para QR -->
+    <div id="scan-camera-wrap" style="position:relative; width:100%; aspect-ratio:1; background:#000; border-radius:12px; overflow:hidden; margin:12px 0;">
+      <video id="scan-video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover;"></video>
+      <canvas id="scan-canvas" style="display:none;"></canvas>
+      <!-- Marco de enfoque -->
+      <div style="position:absolute;inset:0;pointer-events:none;">
+        <div style="position:absolute;top:20%;left:20%;right:20%;bottom:20%;border:2px solid rgba(255,255,255,0.8);border-radius:8px;box-shadow:0 0 0 1000px rgba(0,0,0,0.4);"></div>
+        <div id="scan-status-overlay" style="position:absolute;bottom:12px;left:0;right:0;text-align:center;color:white;font-size:13px;text-shadow:0 1px 3px rgba(0,0,0,0.8);">
+          Buscando QR...
+        </div>
+      </div>
     </div>
-    <label class="field-label" style="margin-top: 0;">¿No tenés cámara? Pegá el código:</label>
-    <textarea id="qr-paste" rows="3" placeholder="LCAPP|tenant=...|mode=visitor|..." style="font-family: monospace; font-size: 12px;"></textarea>
+
+    <div id="scan-no-camera" style="display:none; padding:12px; background:var(--bg); border-radius:8px; margin-bottom:12px; font-size:13px; color:var(--text-2); text-align:center;">
+      📵 No se pudo acceder a la cámara.<br>Pegá el código manualmente:
+    </div>
+
+    <div id="scan-paste-wrap">
+      <label class="field-label" style="margin-top:0;">O pegá el código manualmente:</label>
+      <textarea id="qr-paste" rows="2" placeholder="LCAPP|tenant=...|mode=visitor|..." style="font-family:monospace;font-size:12px;"></textarea>
+    </div>
+
+    <div class="actions" style="margin-top:10px;">
+      <button class="btn-secondary" onclick="closeScanModal()" style="flex:1;">Cancelar</button>
+      <button class="btn-primary" onclick="processPastedQR()" style="flex:2;">Validar código</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: escanear tarjeta del médico (QR o foto OCR) -->
+<div class="modal-overlay hidden" id="card-scan-modal">
+  <div class="modal-card" style="max-width: 440px;">
+    <button class="modal-close-btn" onclick="closeCardScanModal()" aria-label="Cerrar">✕</button>
+    <h3 id="card-scan-title">📷 Escanear tarjeta</h3>
+    <div class="modal-sub" id="card-scan-sub">Apuntá la cámara al QR o a los datos de la tarjeta</div>
+
+    <!-- Selector de modo -->
+    <div style="display:flex; gap:8px; margin-bottom:12px;">
+      <button id="card-mode-qr" class="btn-primary" style="flex:1; font-size:13px;" onclick="setCardScanMode('qr')">🔲 QR</button>
+      <button id="card-mode-ocr" class="btn-secondary" style="flex:1; font-size:13px;" onclick="setCardScanMode('ocr')">📸 Foto / OCR</button>
+    </div>
+
+    <!-- Vista de cámara -->
+    <div id="card-camera-wrap" style="position:relative; width:100%; aspect-ratio:1.4; background:#000; border-radius:12px; overflow:hidden; margin-bottom:12px;">
+      <video id="card-video" autoplay playsinline muted style="width:100%; height:100%; object-fit:cover;"></video>
+      <canvas id="card-canvas" style="display:none;"></canvas>
+      <div style="position:absolute;inset:0;pointer-events:none;">
+        <div id="card-frame-qr" style="position:absolute;top:15%;left:30%;right:30%;bottom:15%;border:2px solid rgba(255,255,255,0.8);border-radius:6px;"></div>
+        <div id="card-frame-ocr" style="display:none;position:absolute;top:10%;left:5%;right:5%;bottom:10%;border:2px solid rgba(100,200,255,0.8);border-radius:6px;"></div>
+        <div id="card-status-overlay" style="position:absolute;bottom:10px;left:0;right:0;text-align:center;color:white;font-size:13px;text-shadow:0 1px 3px rgba(0,0,0,0.8);">
+          Buscando QR...
+        </div>
+      </div>
+    </div>
+
+    <!-- Resultado OCR -->
+    <div id="card-ocr-result" style="display:none; padding:10px; background:var(--bg); border-radius:8px; margin-bottom:10px; font-size:13px;">
+      <div style="font-weight:600; margin-bottom:6px;">Texto detectado:</div>
+      <div id="card-ocr-text" style="white-space:pre-wrap; color:var(--text-2); font-size:12px;"></div>
+      <div id="card-ocr-parsed" style="margin-top:8px;"></div>
+    </div>
+
+    <div id="card-no-camera" style="display:none; padding:12px; background:var(--bg); border-radius:8px; margin-bottom:12px; font-size:13px; color:var(--text-2); text-align:center;">
+      📵 Sin acceso a cámara. Usá carga manual.
+    </div>
+
     <div class="actions">
-      <button class="btn-secondary" onclick="closeScanModal()" style="flex: 1;">Cancelar</button>
-      <button class="btn-primary" onclick="processPastedQR()" style="flex: 2;">Validar código</button>
+      <button class="btn-secondary" onclick="closeCardScanModal()" style="flex:1;">Cancelar</button>
+      <button id="card-capture-btn" class="btn-primary" style="flex:2; display:none;" onclick="captureCardPhoto()">📸 Capturar foto</button>
+      <button id="card-apply-btn" class="btn-primary" style="flex:2; display:none;" onclick="applyCardData()">✓ Usar estos datos</button>
     </div>
   </div>
 </div>
@@ -1418,6 +1495,16 @@ async function checkAccessCode() {
           <input type="file" id="config-file-input" accept="application/json,.json" style="display: none;" onchange="handleConfigFileImport(event)" />
         </div>
         <div id="import-preview" style="display: none; margin-top: 12px; padding: 10px; background: white; border: 1px solid var(--border); border-radius: var(--radius-sm);"></div>
+
+        <!-- Botón de sync con Supabase: visible solo cuando está conectado -->
+        <div id="sync-from-supabase-btn-wrap" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);">
+          <div style="font-size: 12px; color: var(--text-2); margin-bottom: 8px;">
+            🔄 <strong>Sincronizar desde Supabase</strong> — trae empresas, staff y premios del backend y actualiza este dispositivo. Usalo cuando agregues staff o empresas desde otro dispositivo y quieras ver los cambios acá.
+          </div>
+          <button class="btn-primary" onclick="importConfigFromSupabase()" style="width: 100%;">
+            🔄 Sincronizar config desde Supabase
+          </button>
+        </div>
       </div>
 
       <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
@@ -1452,9 +1539,9 @@ async function checkAccessCode() {
       <div id="supabase-test-result" style="display: none; margin-top: 10px; padding: 10px; border-radius: var(--radius-sm); font-size: 13px;"></div>
 
       <div style="margin-top: 16px; padding: 12px; background: var(--bg); border-radius: var(--radius-md);">
-        <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">⬇ Importar config desde Supabase</div>
-        <div style="font-size: 12px; color: var(--text-2); margin-bottom: 10px;">Trae empresas, eventos, staff y premios del backend para reemplazar la config local. Útil cuando configurás todo en Supabase y querés clonarlo a este dispositivo.</div>
-        <button class="btn-secondary" onclick="importConfigFromSupabase()" style="width: 100%;">⬇ Bajar config desde Supabase</button>
+        <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">🔄 Sincronizar config desde Supabase</div>
+        <div style="font-size: 12px; color: var(--text-2); margin-bottom: 10px;">Trae empresas, staff y premios del backend y reemplaza la config local de <strong>este dispositivo</strong>. Usalo cuando agregaste staff o empresas desde otro dispositivo y acá no aparecen todavía.</div>
+        <button class="btn-primary" onclick="importConfigFromSupabase()" style="width: 100%;">🔄 Sincronizar config desde Supabase</button>
       </div>
 
       <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
@@ -1632,6 +1719,130 @@ const SUPABASE = {
     }
   },
 
+  // Crea una empresa nueva en Supabase.
+  async createCompany(companyData) {
+    if (!this.enabled) return { ok: false, error: 'Supabase no configurado' };
+    try {
+      const resp = await fetch(this.url + '/rest/v1/companies', {
+        method: 'POST',
+        headers: {
+          'apikey': this.anonKey,
+          'Authorization': 'Bearer ' + (this.authToken || this.anonKey),
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({
+          id: companyData.id,
+          name: companyData.name,
+          color: companyData.color || '#1F4E79',
+          countries: companyData.countries || ['AR'],
+          active: true,
+          metadata: companyData.metadata || {}
+        })
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        if (resp.status === 409) return { ok: true }; // ya existe
+        return { ok: false, error: 'HTTP ' + resp.status + ': ' + text.slice(0, 200) };
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  },
+
+  // Desactiva una empresa en Supabase (soft delete)
+  async deactivateCompany(companyId) {
+    if (!this.enabled) return { ok: false, error: 'Supabase no configurado' };
+    try {
+      const resp = await fetch(this.url + '/rest/v1/companies?id=eq.' + encodeURIComponent(companyId), {
+        method: 'PATCH',
+        headers: {
+          'apikey': this.anonKey,
+          'Authorization': 'Bearer ' + (this.authToken || this.anonKey),
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ active: false })
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        return { ok: false, error: 'HTTP ' + resp.status + ': ' + text.slice(0, 200) };
+      }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  },
+
+  // Sube una imagen de credencial al bucket 'card-scans' de Supabase Storage.
+  // Recibe un canvas (con la foto capturada), la comprime a escala de grises y
+  // la sube como JPEG liviano (~30-50KB). Devuelve la URL pública o null si falla.
+  async uploadCardImage(canvas, leadId) {
+    if (!this.enabled) return null;
+    try {
+      // Crear canvas reducido en escala de grises (~300px de ancho máximo)
+      const MAX_W = 320;
+      const scale = Math.min(1, MAX_W / canvas.width);
+      const w = Math.round(canvas.width * scale);
+      const h = Math.round(canvas.height * scale);
+
+      const small = document.createElement('canvas');
+      small.width = w;
+      small.height = h;
+      const ctx = small.getContext('2d');
+
+      // Dibujar reducido
+      ctx.drawImage(canvas, 0, 0, w, h);
+
+      // Convertir a escala de grises
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+        data[i] = data[i+1] = data[i+2] = gray;
+      }
+      ctx.putImageData(imageData, 0, 0);
+
+      // Convertir a blob JPEG con calidad 0.7
+      const blob = await new Promise(resolve => small.toBlob(resolve, 'image/jpeg', 0.7));
+      if (!blob) return null;
+
+      // Nombre de archivo: lead_id + timestamp
+      const ts = Date.now();
+      const filename = (leadId || 'unknown') + '_' + ts + '.jpg';
+      const path = filename;
+
+      // Subir al bucket card-scans
+      const resp = await fetch(
+        this.url + '/storage/v1/object/card-scans/' + encodeURIComponent(path),
+        {
+          method: 'POST',
+          headers: {
+            'apikey': this.anonKey,
+            'Authorization': 'Bearer ' + (this.authToken || this.anonKey),
+            'Content-Type': 'image/jpeg',
+            'x-upsert': 'true'
+          },
+          body: blob
+        }
+      );
+
+      if (!resp.ok) {
+        const txt = await resp.text();
+        console.warn('uploadCardImage error:', resp.status, txt.slice(0, 200));
+        return null;
+      }
+
+      // URL pública del archivo
+      const publicUrl = this.url + '/storage/v1/object/public/card-scans/' + encodeURIComponent(path);
+      return publicUrl;
+    } catch (e) {
+      console.warn('uploadCardImage exception:', e.message);
+      return null;
+    }
+  },
+
   // Crea un staff nuevo en Supabase con PIN hasheado.
   // Llama a fn_admin_reset_staff_pin para setear el PIN (la función acepta staff nuevo).
   async createStaff(staffData) {
@@ -1776,7 +1987,8 @@ const SUPABASE = {
       email_enviado_at: lead.email_enviado_at || null,
       email_pdf_attached: lead.email_pdf_attached || null,
       consentimiento: lead.consentimiento !== false,
-      consentimiento_ley: lead.consentimiento_ley || null
+      consentimiento_ley: lead.consentimiento_ley || null,
+      card_image_url: lead.card_image_url || null
     };
   }
 };
@@ -2060,7 +2272,8 @@ async function saveLeadToDB(leadPayload) {
     consentimiento: true,
     consentimiento_ley: COUNTRIES[STATE.country].law,
     created_at: new Date().toISOString(),
-    device_id: STATE.deviceId,                       // identificador del dispositivo
+    device_id: STATE.deviceId,
+    card_image_url: leadPayload.card_image_url || null,  // URL de foto de credencial en Supabase Storage
     synced: false,
   };
   await dbAdd('leads', lead);
@@ -2899,20 +3112,41 @@ function toggleCompanyGame(coId, game, checked) {
   renderPrizesByCompany();
 }
 
-function addCompany() {
+async function addCompany() {
   const name = prompt('Nombre de la nueva empresa:');
-  if (!name) return;
-  const id = name.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 20) + '_' + Date.now().toString(36).slice(-4);
+  if (!name || !name.trim()) return;
+
+  const country = prompt('País (AR / CL / PE):', 'AR');
+  if (!country) return;
+
+  const id = name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 20) + '_' + Date.now().toString(36).slice(-4);
+
+  // Si Supabase está activo, crear la empresa en el backend PRIMERO
+  if (SUPABASE.enabled) {
+    toast('⏳ Creando ' + name.trim() + ' en Supabase...');
+    const result = await SUPABASE.createCompany({
+      id: id,
+      name: name.trim(),
+      color: '#1F4E79',
+      countries: [country.trim().toUpperCase()]
+    });
+    if (!result || result.ok !== true) {
+      toast('❌ Error al crear en Supabase: ' + ((result && result.error) || 'desconocido'));
+      return;
+    }
+    toast('✓ ' + name.trim() + ' creada en Supabase');
+  }
+
   STATE.config.companies.push({
-    id, name, color: '#1F4E79',
-    countries: ['AR'],
+    id, name: name.trim(), color: '#1F4E79',
+    countries: [country.trim().toUpperCase()],
     event: STATE.config.globalEvent,
     prize: 'Premio sorpresa',
     games: ['wheel'],
     gameMessages: { ...DEFAULT_MESSAGES },
     wheelPrizes: DEFAULT_WHEEL_PRIZES.map(p => ({ ...p })),
-        catalogs: DEFAULT_CATALOGS.map(c => ({ ...c })),
-        fallbackCatalog: { ...DEFAULT_FALLBACK_CATALOG },
+    catalogs: DEFAULT_CATALOGS.map(c => ({ ...c })),
+    fallbackCatalog: { ...DEFAULT_FALLBACK_CATALOG },
     staff: []
   });
   saveConfig();
@@ -2945,8 +3179,19 @@ function editCompany(coId) {
   renderQRGenerator();
 }
 
-function deleteCompany(coId) {
+async function deleteCompany(coId) {
   if (!confirm('¿Eliminar esta empresa? También se borran sus staff y QRs.')) return;
+
+  // Si Supabase está activo, desactivar en el backend
+  if (SUPABASE.enabled) {
+    const result = await SUPABASE.deactivateCompany(coId);
+    if (!result || result.ok !== true) {
+      toast('⚠️ Se eliminó localmente pero falló en Supabase: ' + ((result && result.error) || 'desconocido'));
+    } else {
+      toast('✓ Empresa desactivada en Supabase');
+    }
+  }
+
   STATE.config.companies = STATE.config.companies.filter(c => c.id !== coId);
   saveConfig();
   renderCompaniesList();
@@ -3492,15 +3737,21 @@ function saveAdminConfig() {
 // =============================================================
 function renderSupabaseStatus() {
   const el = document.getElementById('supabase-status');
+  const syncBtnWrap = document.getElementById('sync-from-supabase-btn-wrap');
+
   if (!el) return;
   if (SUPABASE.enabled) {
     el.style.background = 'var(--success-bg)';
     el.style.color = 'var(--success-text)';
     el.innerHTML = '<strong>✓ Conectado</strong> · ' + escapeHTML(SUPABASE.url) + ' · sincronización ACTIVA';
+    // Mostrar botón de sync en sección 7
+    if (syncBtnWrap) syncBtnWrap.style.display = '';
   } else {
     el.style.background = 'var(--warning-bg, #FFF8E1)';
     el.style.color = 'var(--warning-text, #8A5A00)';
     el.innerHTML = '<strong>⚠ Sin conectar</strong> · la app funciona en modo local · sincronización SIMULADA';
+    // Ocultar botón de sync en sección 7
+    if (syncBtnWrap) syncBtnWrap.style.display = 'none';
   }
   // Pre-cargar inputs si hay credenciales guardadas
   if (SUPABASE.url) document.getElementById('supabase-url-input').value = SUPABASE.url;
@@ -3586,13 +3837,13 @@ async function disconnectSupabase() {
   toast('Supabase desconectado · modo local');
 }
 
-async function importConfigFromSupabase() {
+async function importConfigFromSupabase(silent = false) {
   if (!SUPABASE.enabled) {
-    toast('⚠️ Configurá Supabase primero');
+    if (!silent) toast('⚠️ Configurá Supabase primero');
     return;
   }
-  if (!confirm('¿Reemplazar la config local con la de Supabase? Las empresas/staff/premios actuales se van a sobrescribir.')) return;
-  toast('⏳ Bajando config desde Supabase...');
+  if (!silent && !confirm('¿Reemplazar la config local con la de Supabase? Las empresas/staff/premios actuales se van a sobrescribir.')) return;
+  if (!silent) toast('⏳ Bajando config desde Supabase...');
   const data = await SUPABASE.fetchFullConfig();
   if (!data) {
     toast('❌ Error al traer datos de Supabase');
@@ -3961,11 +4212,26 @@ function renderAdminPinPad() {
 // mismo dispositivo del booth de Sirex para registrarse en Eccosur).
 
 async function applyQRConfig(qrData) {
-  const co = STATE.config.companies.find(c => c.id === qrData.tenant);
+  let co = STATE.config.companies.find(c => c.id === qrData.tenant);
+
+  // Si la empresa no está localmente, intentar sincronizar desde Supabase
   if (!co) {
-    toast('⚠️ QR no reconocido');
+    if (SUPABASE.enabled) {
+      toast('⏳ Sincronizando desde Supabase...');
+      await importConfigFromSupabase(true);
+      co = STATE.config.companies.find(c => c.id === qrData.tenant);
+    }
+  }
+
+  if (!co) {
+    if (!SUPABASE.enabled) {
+      toast('⚠️ Empresa "' + qrData.tenant + '" no encontrada · entrá al admin → sección 7 → "🔄 Sincronizar config desde Supabase"');
+    } else {
+      toast('⚠️ Empresa "' + qrData.tenant + '" no existe en Supabase · pedile el JSON de config al admin');
+    }
     return false;
   }
+
   if (qrData.mode !== 'visitor' && qrData.mode !== 'staff') {
     toast('⚠️ QR con modo inválido');
     return false;
@@ -3987,6 +4253,9 @@ async function applyQRConfig(qrData) {
 function applyTenantToUI() {
   const co = activeCompany();
   if (!co) {
+    document.getElementById('brand-name').textContent = 'MKT para Eventos Médicos';
+    document.getElementById('event-name').textContent = 'Escaneá un QR o entrá al admin';
+    document.body.style.setProperty('--primary', '#1F4E79');
     document.getElementById('tenant-indicator').textContent = 'Sin configurar · escaneá un QR o entrá al admin';
     document.getElementById('reset-device-btn').classList.add('hidden');
     document.getElementById('view-visitor').classList.add('hidden');
@@ -4093,17 +4362,97 @@ async function restoreDeviceBinding() {
 // =============================================================
 // ===== SCAN QR MODAL =========================================
 // =============================================================
-function openScanModal() {
+// ===== QR del stand (vincular dispositivo) =====
+let scanStream = null;
+let scanAnimFrame = null;
+
+async function openScanModal() {
   document.getElementById('qr-paste').value = '';
+  document.getElementById('scan-no-camera').style.display = 'none';
+  document.getElementById('scan-camera-wrap').style.display = '';
+  document.getElementById('scan-paste-wrap').style.display = '';
+  document.getElementById('scan-status-overlay').textContent = 'Iniciando cámara...';
   document.getElementById('scan-modal').classList.remove('hidden');
-  // Si hubiera cámara real, acá se inicia el video con html5-qrcode.
-  // Para el MVP, simulamos con paste manual.
+
+  try {
+    await loadJsQR();
+    scanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+    const video = document.getElementById('scan-video');
+    video.srcObject = scanStream;
+    await video.play();
+    document.getElementById('scan-status-overlay').textContent = 'Buscando QR...';
+    startQRDetection();
+  } catch (e) {
+    document.getElementById('scan-camera-wrap').style.display = 'none';
+    document.getElementById('scan-no-camera').style.display = '';
+  }
 }
+
 function closeScanModal() {
   document.getElementById('scan-modal').classList.add('hidden');
+  stopScanStream();
 }
+
+function stopScanStream() {
+  if (scanAnimFrame) { cancelAnimationFrame(scanAnimFrame); scanAnimFrame = null; }
+  if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+  const video = document.getElementById('scan-video');
+  if (video) video.srcObject = null;
+}
+
+function startQRDetection() {
+  const video = document.getElementById('scan-video');
+  const canvas = document.getElementById('scan-canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  function tick() {
+    if (!scanStream) return;
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      if (window.jsQR) {
+        const code = window.jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'dontInvert'
+        });
+        if (code && code.data && code.data.startsWith('LCAPP|')) {
+          document.getElementById('scan-status-overlay').textContent = '✓ QR detectado';
+          stopScanStream();
+          setTimeout(() => {
+            closeScanModal();
+            processQRData(code.data);
+          }, 300);
+          return;
+        }
+      }
+    }
+    scanAnimFrame = requestAnimationFrame(tick);
+  }
+  scanAnimFrame = requestAnimationFrame(tick);
+}
+
+// Carga jsQR desde CDN (solo la primera vez, ~50KB)
+function loadJsQR() {
+  if (window.jsQR) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
 async function processPastedQR() {
   const txt = document.getElementById('qr-paste').value.trim();
+  await processQRData(txt);
+}
+
+// Helper usado tanto por el textarea como por la cámara
+async function processQRData(txt) {
   const data = parseQRPayload(txt);
   if (!data) {
     toast('⚠️ Código inválido o firma incorrecta');
@@ -4111,7 +4460,6 @@ async function processPastedQR() {
   }
   const ok = await applyQRConfig(data);
   if (ok) {
-    closeScanModal();
     toast('✓ QR aplicado · ' + activeCompany().name + ' (' + (data.mode === 'staff' ? 'staff' : 'visitantes') + ')');
   }
 }
@@ -4193,6 +4541,7 @@ document.addEventListener('keydown', (e) => {
       { id: 'pin-modal',         close: closePinModal },
       { id: 'admin-pin-modal',   close: closeAdminPinModal },
       { id: 'scan-modal',        close: closeScanModal },
+      { id: 'card-scan-modal',   close: closeCardScanModal },
       { id: 'dup-modal',         close: closeDupModal },
       { id: 'admin-panel',       close: closeAdminPanel },
     ];
@@ -4220,6 +4569,7 @@ function setupOverlayClick(modalId, closeFn) {
 setupOverlayClick('pin-modal',       closePinModal);
 setupOverlayClick('admin-pin-modal', closeAdminPinModal);
 setupOverlayClick('scan-modal',      closeScanModal);
+setupOverlayClick('card-scan-modal', closeCardScanModal);
 setupOverlayClick('dup-modal',       closeDupModal);
 // admin-panel no se cierra con click afuera porque tiene scroll interno
 // y sería muy fácil cerrarlo por accidente al hacer scroll.
@@ -4687,42 +5037,52 @@ async function processEmailQueue() {
   }
 }
 
-function resetVisitor() {
-  // Limpio formData e intereses
+async function resetVisitor() {
+  // Prevenir doble-click: deshabilitar el botón inmediatamente
+  const btn = document.getElementById('success-btn');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+
+  // Sacar del stack actual con un micro-yield para que el DOM respire
+  await new Promise(r => setTimeout(r, 50));
+
   const wasAssisted = STATE.assistedByStaff;
   STATE.formData = {};
   STATE.interests.clear();
   STATE.assistedByStaff = false;
 
-  // Limpio inputs visitante
+  // Limpiar inputs del formulario del visitante
   document.querySelectorAll('#vstep-2 .chip').forEach(c => c.classList.remove('active'));
   document.querySelectorAll('#vstep-2 input, #vstep-2 select, #vstep-2 textarea').forEach(i => {
     if (i.id !== 'f-cc') i.value = '';
     if (i.type === 'checkbox') i.checked = false;
   });
-  // Reseteo ruleta
-  document.getElementById('wheel-result').innerHTML = '';
-  document.getElementById('spin-btn').disabled = false;
-  document.getElementById('spin-btn').style.opacity = '1';
-  document.getElementById('wheel-svg').style.transform = 'rotate(0deg)';
+
+  // Resetear juegos con null-check
+  const wheelResult = document.getElementById('wheel-result');
+  if (wheelResult) wheelResult.innerHTML = '';
+  const spinBtn = document.getElementById('spin-btn');
+  if (spinBtn) { spinBtn.disabled = false; spinBtn.style.opacity = '1'; }
+  const wheelSvg = document.getElementById('wheel-svg');
+  if (wheelSvg) wheelSvg.style.transform = 'rotate(0deg)';
+
+  // Resetear datos de escaneo
+  cardOcrData = null;
+  cardCapturedCanvas = null;
 
   if (wasAssisted) {
-    // Vuelve al panel del staff con el form limpio, listo para el próximo
     document.querySelectorAll('.vstep').forEach(s => s.classList.add('hidden'));
     document.getElementById('view-visitor').classList.add('hidden');
     document.getElementById('view-staff').classList.remove('hidden');
     document.getElementById('staff-form').classList.add('hidden');
     document.getElementById('staff-scan').classList.add('hidden');
-    // Limpio inputs del staff form
-    document.getElementById('sf-name').value = '';
-    document.getElementById('sf-spec').value = '';
-    document.getElementById('sf-org').value = '';
-    document.getElementById('sf-phone').value = '';
-    document.getElementById('sf-email').value = '';
+    initStaffForm();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } else {
     goStep(1);
   }
+
+  // Re-habilitar el botón (por si el usuario vuelve a esta pantalla)
+  if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
 }
 
 // ===== Staff =====
@@ -4731,6 +5091,14 @@ let STAFF_FORM_STATE = { stars: 0, temp: null };
 
 function initStaffForm() {
   STAFF_FORM_STATE = { stars: 0, temp: null };
+  // Limpiar todos los campos de texto
+  ['sf-name', 'sf-spec', 'sf-org', 'sf-email', 'sf-phone', 'sf-notes'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  // Ocultar badge de OCR
+  const badge = document.getElementById('ocr-badge');
+  if (badge) badge.style.display = 'none';
   // Reset visual de estrellas
   document.querySelectorAll('#sf-stars .star').forEach(s => s.classList.remove('active'));
   document.getElementById('sf-stars-label').textContent = 'Sin calificar';
@@ -4761,22 +5129,396 @@ document.querySelectorAll('#sf-temp .temp-btn').forEach(btn => {
   });
 });
 
-function staffScan(type) {
-  // Si el staff no está logueado, mostrar el modal de PIN antes de seguir
+// ===== Escaneo de tarjeta del médico =====
+let cardStream = null;
+let cardScanAnim = null;
+let cardScanMode = 'qr';  // 'qr' o 'ocr'
+let cardScanType = 'badge'; // 'badge' o 'card'
+let cardOcrData = null;  // datos parseados del OCR
+
+async function staffScan(type) {
   if (!STATE.currentStaff) {
     toast('Iniciá sesión primero');
     showPinModal();
     return;
   }
-  initStaffForm();
-  document.getElementById('staff-form').classList.add('hidden');
-  document.getElementById('staff-scan').classList.remove('hidden');
-  document.getElementById('scan-title').textContent = type === 'badge' ? 'Escaneando credencial del congreso...' : 'Escaneando tarjeta de presentación...';
-  setTimeout(() => {
-    document.getElementById('staff-scan').classList.add('hidden');
-    document.getElementById('staff-form').classList.remove('hidden');
-  }, 2400);
+  cardScanType = type;
+  cardOcrData = null;
+  document.getElementById('card-scan-title').textContent =
+    type === 'badge' ? '📷 Escanear credencial del congreso' : '📷 Escanear tarjeta de presentación';
+  document.getElementById('card-ocr-result').style.display = 'none';
+  document.getElementById('card-apply-btn').style.display = 'none';
+  document.getElementById('card-scan-modal').classList.remove('hidden');
+  await setCardScanMode('qr');
 }
+
+async function setCardScanMode(mode) {
+  cardScanMode = mode;
+  stopCardStream();
+  cardOcrData = null;
+  document.getElementById('card-ocr-result').style.display = 'none';
+  document.getElementById('card-apply-btn').style.display = 'none';
+
+  // Actualizar botones de modo
+  document.getElementById('card-mode-qr').className = mode === 'qr' ? 'btn-primary' : 'btn-secondary';
+  document.getElementById('card-mode-qr').style.flex = '1';
+  document.getElementById('card-mode-qr').style.fontSize = '13px';
+  document.getElementById('card-mode-ocr').className = mode === 'ocr' ? 'btn-primary' : 'btn-secondary';
+  document.getElementById('card-mode-ocr').style.flex = '1';
+  document.getElementById('card-mode-ocr').style.fontSize = '13px';
+
+  // Marco visual
+  document.getElementById('card-frame-qr').style.display = mode === 'qr' ? '' : 'none';
+  document.getElementById('card-frame-ocr').style.display = mode === 'ocr' ? '' : 'none';
+
+  // Botón capturar solo en modo OCR
+  document.getElementById('card-capture-btn').style.display = mode === 'ocr' ? '' : 'none';
+
+  const subText = mode === 'qr'
+    ? 'Apuntá al QR de la credencial o tarjeta'
+    : 'Encuadrá los datos de la tarjeta y sacá foto';
+  document.getElementById('card-scan-sub').textContent = subText;
+
+  await loadJsQR();
+  await startCardCamera(mode);
+}
+
+async function startCardCamera(mode) {
+  const statusEl = document.getElementById('card-status-overlay');
+  statusEl.textContent = 'Iniciando cámara...';
+  document.getElementById('card-no-camera').style.display = 'none';
+  document.getElementById('card-camera-wrap').style.display = '';
+
+  try {
+    cardStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+    });
+    const video = document.getElementById('card-video');
+    video.srcObject = cardStream;
+    await video.play();
+
+    if (mode === 'qr') {
+      statusEl.textContent = 'Buscando QR...';
+      startCardQRDetection();
+    } else {
+      statusEl.textContent = 'Listo · tocá "Capturar foto"';
+    }
+  } catch (e) {
+    document.getElementById('card-camera-wrap').style.display = 'none';
+    document.getElementById('card-no-camera').style.display = '';
+  }
+}
+
+function startCardQRDetection() {
+  const video = document.getElementById('card-video');
+  const canvas = document.getElementById('card-canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  function tick() {
+    if (!cardStream || cardScanMode !== 'qr') return;
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      if (window.jsQR) {
+        const code = window.jsQR(imageData.data, imageData.width, imageData.height);
+        if (code && code.data) {
+          document.getElementById('card-status-overlay').textContent = '✓ QR detectado';
+          stopCardStream();
+          // Parsear QR de tarjeta médica
+          const parsed = parseMedicalQR(code.data);
+          applyParsedCardData(parsed, code.data);
+          return;
+        }
+      }
+    }
+    cardScanAnim = requestAnimationFrame(tick);
+  }
+  cardScanAnim = requestAnimationFrame(tick);
+}
+
+let cardCapturedCanvas = null; // canvas con la foto capturada, para subir a Supabase
+
+async function captureCardPhoto() {
+  const video = document.getElementById('card-video');
+  const canvas = document.getElementById('card-canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+
+  // Guardar referencia al canvas para subir a Supabase cuando se confirmen los datos
+  cardCapturedCanvas = canvas;
+
+  document.getElementById('card-status-overlay').textContent = 'Procesando texto...';
+  document.getElementById('card-capture-btn').disabled = true;
+
+  try {
+    await loadTesseract();
+    const result = await Tesseract.recognize(canvas, 'spa+eng', {
+      logger: () => {}
+    });
+    const text = result.data.text;
+    document.getElementById('card-ocr-text').textContent = text;
+    const parsed = parseOCRText(text);
+    applyParsedCardData(parsed, text);
+    document.getElementById('card-status-overlay').textContent = '✓ Texto extraído · la foto se guardará al confirmar';
+  } catch (e) {
+    document.getElementById('card-status-overlay').textContent = 'Error en OCR. Intentá de nuevo.';
+    console.warn('OCR error:', e);
+  } finally {
+    document.getElementById('card-capture-btn').disabled = false;
+  }
+}
+
+// Carga Tesseract.js (OCR, ~5MB, solo cuando se necesita)
+function loadTesseract() {
+  if (window.Tesseract) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+// Parsear QR de tarjeta médica (FAECYS, congresos, vCard, texto libre)
+function parseMedicalQR(text) {
+  const result = {};
+
+  // Formato vCard
+  if (text.includes('BEGIN:VCARD')) {
+    const fn = text.match(/FN[^:]*:(.+)/);
+    const org = text.match(/ORG[^:]*:(.+)/);
+    const title = text.match(/TITLE[^:]*:(.+)/);
+    const email = text.match(/EMAIL[^:]*:(.+)/);
+    const tel = text.match(/TEL[^:]*:(.+)/);
+    if (fn) result.nombre = fn[1].trim();
+    if (org) result.institucion = org[1].replace(/;/g, ' ').trim();
+    if (title) result.especialidad = title[1].trim();
+    if (email) result.email = email[1].trim();
+    if (tel) result.whatsapp = tel[1].replace(/\D/g, '');
+    return result;
+  }
+
+  // Formato FAECYS: NOMBRE|MATRICULA|ESPECIALIDAD|INSTITUCION|DNI
+  if (text.includes('|')) {
+    const parts = text.split('|');
+    if (parts.length >= 2) {
+      result.nombre = parts[0].trim();
+      if (parts[1] && isNaN(parts[1])) result.especialidad = parts[1].trim();
+      if (parts[2]) result.especialidad = result.especialidad || parts[2].trim();
+      if (parts[3]) result.institucion = parts[3].trim();
+    }
+    return result;
+  }
+
+  // Texto libre: intentar extraer nombre de la primera línea
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length > 0) result.nombre = lines[0];
+  if (lines.length > 1) result.especialidad = lines[1];
+
+  return result;
+}
+
+// Parsear texto OCR de una credencial médica o tarjeta
+function parseOCRText(text) {
+  const result = {};
+
+  // Limpiar el texto: quitar líneas de ruido obvio (muy cortas, solo números, solo símbolos)
+  const allLines = text.split('\n').map(l => l.trim()).filter(l => l.length > 1);
+  const lines = allLines.filter(l => !/^[\d\s\.\-\*\$#@%&!]+$/.test(l)); // quitar líneas solo con números/símbolos
+
+  // Detectar email
+  const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  if (emailMatch) result.email = emailMatch[0];
+
+  // Detectar teléfono argentino
+  const telMatch = text.match(/(?:\+?54\s?)?(?:9\s?)?(?:11|[2-9]\d)\s?\d{4}[-\s]?\d{4}/);
+  if (telMatch) result.whatsapp = telMatch[0].replace(/\D/g, '');
+
+  // Palabras a ignorar para nombre (basura OCR, roles comerciales, nombres de congresos)
+  const ignoreWords = ['expositor', 'comercial', 'gerente', 'director', 'adium', 'sac', 'congreso',
+    'octubre', 'buenos', 'aires', 'rural', 'predio', 'ferial', 'pediatrica', 'pediatrica',
+    'argentina', 'cardiolog', 'sirex', 'eccosur', 'torregal'];
+
+  // === ESTRATEGIA 1: Buscar "Nombre" + "APELLIDO" en líneas consecutivas ===
+  // Formato SAC: "José María" en una línea, "BIBILONI" en mayúsculas en la siguiente
+  for (let i = 0; i < lines.length - 1; i++) {
+    const curr = lines[i].replace(/[\-–—=_|]+.*$/, '').trim();
+    const next = lines[i + 1].replace(/[\-–—=_|]+.*$/, '').trim();
+
+    const currLower = curr.toLowerCase();
+    const nextLower = next.toLowerCase();
+
+    // Saltar si contiene palabras de ruido
+    if (ignoreWords.some(w => currLower.includes(w))) continue;
+
+    // curr: parece nombre (empieza con mayúscula, tiene letras, no todo mayúsculas)
+    const looksLikeFirstName = /^[A-ZÁÉÍÓÚÑ]/.test(curr) &&
+      curr !== curr.toUpperCase() &&
+      curr.length >= 3 && curr.length <= 30 &&
+      !ignoreWords.some(w => currLower.includes(w));
+
+    // next: APELLIDO todo en mayúsculas, sin ruido
+    const looksLikeLastName = next === next.toUpperCase() &&
+      /^[A-ZÁÉÍÓÚÑ]{3,}/.test(next) &&
+      next.length >= 3 && next.length <= 25 &&
+      !next.match(/^\d/) &&
+      !ignoreWords.some(w => nextLower.includes(w));
+
+    if (looksLikeFirstName && looksLikeLastName) {
+      result.nombre = curr + ' ' + next;
+
+      // La línea i+2 suele ser el rol (EXPOSITOR COMERCIAL) → la saltamos
+      // La línea i+3 suele ser la institución (SIREX)
+      const roleLineIdx = i + 2;
+      const instLineIdx = i + 3;
+
+      if (lines[roleLineIdx]) {
+        const roleLine = lines[roleLineIdx].replace(/[\-–—=_|]+.*$/, '').trim();
+        const esRolComercial = /expositor|comercial|gerente|director|administr|vendedor|presidente/i.test(roleLine);
+        // Solo guardar como especialidad si es especialidad médica, no rol comercial
+        if (!esRolComercial) {
+          const espKeywords = ['cardiol', 'neurol', 'oncol', 'clinic', 'ciruj', 'ortop', 'pediat',
+            'ginecol', 'dermat', 'oftalm', 'psiqui', 'traumat', 'radiol', 'anestes', 'urolog',
+            'hematol', 'gastro', 'pulmon', 'endoc', 'infect', 'nefrol', 'reumat', 'medic'];
+          if (espKeywords.some(k => roleLine.toLowerCase().includes(k))) {
+            result.especialidad = roleLine;
+          }
+        }
+      }
+
+      // Institución: la línea siguiente al rol, que no sea numérica ni ruido
+      if (lines[instLineIdx]) {
+        const instLine = lines[instLineIdx].replace(/[\-–—=_|]+.*$/, '').trim();
+        if (instLine.length > 2 && !instLine.match(/^\d+$/) && !ignoreWords.some(w => instLine.toLowerCase().includes(w))) {
+          // Solo si parece una institución (tiene letras)
+          if (/[a-zA-Z]/.test(instLine) && instLine.length < 50) {
+            result.institucion = instLine;
+          }
+        }
+      }
+      break;
+    }
+  }
+
+  // === ESTRATEGIA 2: Keywords de especialidad (si no encontramos con estrategia 1) ===
+  if (!result.especialidad) {
+    const espKeywords = ['cardiol', 'neurol', 'oncol', 'clinic', 'ciruj', 'ortop', 'pediat',
+      'ginecol', 'dermat', 'oftalm', 'psiqui', 'traumat', 'radiol', 'anestes', 'urolog',
+      'hematol', 'gastro', 'pulmon', 'endoc', 'infect', 'nefrol', 'reumat', 'medic'];
+    for (const line of lines) {
+      if (espKeywords.some(k => line.toLowerCase().includes(k))) {
+        result.especialidad = line.replace(/[\-–—=_|]+.*$/, '').trim();
+        break;
+      }
+    }
+  }
+
+  // === ESTRATEGIA 3: Keywords de institución ===
+  if (!result.institucion) {
+    const instKeywords = ['hospital', 'clinica', 'clínica', 'sanatorio', 'fundaci', 'instituto',
+      'centro', 'sociedad', 'universitari', 'nacional', 'municipal'];
+    for (const line of lines) {
+      if (instKeywords.some(k => line.toLowerCase().includes(k))) {
+        result.institucion = line.replace(/[\-–—=_|]+.*$/, '').trim();
+        break;
+      }
+    }
+  }
+
+  // === ESTRATEGIA 4: Nombre como fallback (Dr./Dra. o dos palabras con mayúsculas) ===
+  if (!result.nombre) {
+    for (const line of lines) {
+      const clean = line.replace(/[\-–—=_|]+.*$/, '').trim();
+      if (ignoreWords.some(w => clean.toLowerCase().includes(w))) continue;
+      if (/^Dr[a]?\.\s/i.test(clean) || /^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+ [A-ZÁÉÍÓÚÑ][a-záéíóúñ]+/.test(clean)) {
+        result.nombre = clean;
+        break;
+      }
+    }
+  }
+
+  return result;
+}
+
+function applyParsedCardData(parsed, rawText) {
+  const resultEl = document.getElementById('card-ocr-result');
+  resultEl.style.display = '';
+
+  let parsedHTML = '<div style="margin-top:6px;">';
+  if (parsed.nombre) parsedHTML += '<div>👤 <strong>' + escapeHTML(parsed.nombre) + '</strong></div>';
+  if (parsed.especialidad) parsedHTML += '<div>🏥 ' + escapeHTML(parsed.especialidad) + '</div>';
+  if (parsed.institucion) parsedHTML += '<div>🏛 ' + escapeHTML(parsed.institucion) + '</div>';
+  if (parsed.email) parsedHTML += '<div>📧 ' + escapeHTML(parsed.email) + '</div>';
+  if (parsed.whatsapp) parsedHTML += '<div>📱 ' + escapeHTML(parsed.whatsapp) + '</div>';
+  if (!parsed.nombre && !parsed.especialidad) parsedHTML += '<div style="color:var(--text-3);">No se detectaron datos · completá manualmente</div>';
+  parsedHTML += '</div>';
+
+  document.getElementById('card-ocr-parsed').innerHTML = parsedHTML;
+  document.getElementById('card-ocr-text').textContent = rawText.length > 200 ? rawText.slice(0, 200) + '...' : rawText;
+
+  cardOcrData = parsed;
+  document.getElementById('card-apply-btn').style.display = '';
+}
+
+function applyCardData() {
+  if (!cardOcrData) return;
+  closeCardScanModal();
+  initStaffForm();
+
+  // Limpiar todos los campos primero
+  ['sf-name', 'sf-spec', 'sf-org', 'sf-email', 'sf-phone'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+
+  // Poblar con datos del OCR/QR
+  if (cardOcrData.nombre) { const el = document.getElementById('sf-name'); if (el) el.value = cardOcrData.nombre; }
+  if (cardOcrData.especialidad) { const el = document.getElementById('sf-spec'); if (el) el.value = cardOcrData.especialidad; }
+  if (cardOcrData.institucion) { const el = document.getElementById('sf-org'); if (el) el.value = cardOcrData.institucion; }
+  if (cardOcrData.email) { const el = document.getElementById('sf-email'); if (el) el.value = cardOcrData.email; }
+  if (cardOcrData.whatsapp) { const el = document.getElementById('sf-phone'); if (el) el.value = cardOcrData.whatsapp; }
+
+  // Mostrar badge OCR
+  const badge = document.getElementById('ocr-badge');
+  if (badge) badge.style.display = '';
+
+  document.getElementById('staff-scan').classList.add('hidden');
+  document.getElementById('staff-form').classList.remove('hidden');
+  toast('✓ Datos cargados · revisá y completá lo que falte');
+
+  // Subir imagen a Supabase Storage en segundo plano (no bloquea el flujo)
+  if (cardCapturedCanvas && SUPABASE.enabled) {
+    // Usamos un ID temporal; cuando se guarde el lead, se actualizará con el ID real
+    const tempId = 'tmp_' + Date.now().toString(36);
+    SUPABASE.uploadCardImage(cardCapturedCanvas, tempId).then(url => {
+      if (url) {
+        cardOcrData.card_image_url = url;
+        console.log('✓ Imagen de credencial subida:', url);
+        toast('📷 Foto de credencial guardada en Supabase');
+      }
+    });
+    cardCapturedCanvas = null; // liberar memoria
+  }
+}
+
+function closeCardScanModal() {
+  document.getElementById('card-scan-modal').classList.add('hidden');
+  stopCardStream();
+}
+
+function stopCardStream() {
+  if (cardScanAnim) { cancelAnimationFrame(cardScanAnim); cardScanAnim = null; }
+  if (cardStream) { cardStream.getTracks().forEach(t => t.stop()); cardStream = null; }
+  const video = document.getElementById('card-video');
+  if (video) video.srcObject = null;
+}
+
+
 function staffManual() {
   // Si el staff no está logueado, mostrar el modal de PIN antes de seguir
   if (!STATE.currentStaff) {
@@ -4826,7 +5568,11 @@ async function staffSave() {
     lead_score: STAFF_FORM_STATE.stars,
     temperatura: STAFF_FORM_STATE.temp,
     origen: 'staff_manual',
+    // Si el lead viene de OCR y ya se subió la foto, incluir la URL
+    card_image_url: (cardOcrData && cardOcrData.card_image_url) ? cardOcrData.card_image_url : null,
   };
+  // Limpiar datos OCR una vez guardados
+  cardOcrData = null;
   STATE.assistedByStaff = true;
 
   // Persistir en IndexedDB con staff_id (para auditoría y ranking de staff)
@@ -4896,6 +5642,52 @@ setInterval(() => {
 window.addEventListener('online',  () => setOnlineState(true));
 window.addEventListener('offline', () => setOnlineState(false));
 
+// ===== Auto-setup de Supabase desde supabase.json =====
+// Se ejecuta cuando el usuario ingresa el código de acceso (o al recargar si ya estaba abierto).
+// Busca /supabase.json en el mismo origen. Si lo encuentra y Supabase no está configurado,
+// lo configura automáticamente y descarga la config completa de empresas/staff.
+async function autoSetupSupabase() {
+  // Si Supabase ya está configurado, no hacer nada
+  if (SUPABASE.enabled) return;
+
+  try {
+    const resp = await fetch('/supabase.json', { cache: 'no-store' });
+    if (!resp.ok) return; // archivo no encontrado → modo local, sin ruido
+
+    const cfg = await resp.json();
+    if (!cfg.url || !cfg.anonKey) return;
+
+    // Guardar credenciales en IndexedDB
+    await SUPABASE.save(cfg.url, cfg.anonKey);
+    toast('☁ Supabase conectado automáticamente');
+
+    // Si el archivo incluye config de empresas y el dispositivo está sin configurar,
+    // importar la config completa desde el backend
+    const hasNoCompanies = !STATE.config.companies || STATE.config.companies.length === 0;
+    const hasOnlyDefaults = STATE.config.companies &&
+      STATE.config.companies.length === 2 &&
+      STATE.config.companies[0].id === 'sirex' &&
+      STATE.config.companies[1].id === 'eccosur';
+
+    if (hasNoCompanies || hasOnlyDefaults) {
+      // Pequeño delay para que el toast de conexión se vea
+      await new Promise(r => setTimeout(r, 800));
+      toast('⏳ Descargando config desde Supabase...');
+      await importConfigFromSupabase(true);
+      toast('✓ Config lista · escaneá un QR para empezar');
+    }
+
+    // Actualizar el UI de la sección 8 si el admin está abierto
+    if (typeof renderSupabaseStatus === 'function') renderSupabaseStatus();
+    if (typeof renderStaffByCompany === 'function') renderStaffByCompany();
+
+  } catch (e) {
+    // Si falla el fetch (sin red, JSON malformado, etc.) → silencio total
+    // La app sigue funcionando en modo local
+    console.warn('autoSetupSupabase: no se pudo cargar /supabase.json', e.message);
+  }
+}
+
 // ===== Init =====
 // Genera o recupera el deviceId persistente. Identifica este dispositivo
 // en los logs de sync para debugging ("¿qué tablet generó este error?").
@@ -4927,7 +5719,133 @@ async function getOrCreateDeviceId() {
   if (SUPABASE.enabled && STATE.isOnline) {
     setTimeout(() => trySyncQueue(), 1500);
   }
+  // Auto-setup: si la sesión ya estaba desbloqueada (recarga de página),
+  // correr el setup ahora que el main script terminó de inicializarse
+  if (window._runAutoSetupOnLoad && sessionStorage.getItem('access_unlocked') === 'true') {
+    setTimeout(() => autoSetupSupabase(), 500);
+  }
 })();
+
+// ===== PWA: Service Worker + banners de instalación =====
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      reg.addEventListener('updatefound', () => {
+        const w = reg.installing;
+        w.addEventListener('statechange', () => {
+          if (w.state === 'installed' && navigator.serviceWorker.controller) {
+            toast('🔄 Hay una actualización disponible · recargá para aplicarla');
+          }
+        });
+      });
+    } catch (e) {
+      console.warn('SW registro fallido:', e.message);
+    }
+  });
+}
+
+// Banner instalación Android / Chrome (beforeinstallprompt)
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+  if (!isStandalone && !sessionStorage.getItem('install_banner_dismissed')) {
+    showInstallBanner();
+  }
+});
+
+function showInstallBanner() {
+  if (document.getElementById('pwa-install-banner')) return;
+  const b = document.createElement('div');
+  b.id = 'pwa-install-banner';
+  b.style.cssText = [
+    'position:fixed', 'bottom:80px', 'left:16px', 'right:16px', 'z-index:9000',
+    'background:#1F4E79', 'color:white', 'border-radius:16px', 'padding:16px 20px',
+    'display:flex', 'align-items:center', 'gap:14px',
+    'box-shadow:0 4px 20px rgba(0,0,0,.3)', 'font-family:-apple-system,sans-serif'
+  ].join(';');
+  b.innerHTML =
+    '<div style="font-size:36px">📲</div>' +
+    '<div style="flex:1">' +
+      '<div style="font-weight:700;font-size:17px;line-height:1.3">Instalá la app</div>' +
+      '<div style="font-size:15px;opacity:.85;margin-top:4px">Accedé desde la pantalla de inicio sin abrir el navegador</div>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:8px;min-width:92px">' +
+      '<button onclick="triggerPWAInstall()" style="background:white;color:#1F4E79;border:none;' +
+        'border-radius:10px;padding:12px 16px;font-size:16px;font-weight:700;cursor:pointer;' +
+        'min-height:48px;touch-action:manipulation">Instalar</button>' +
+      '<button onclick="dismissInstallBanner()" style="background:transparent;color:white;' +
+        'border:1px solid rgba(255,255,255,.4);border-radius:10px;padding:8px;' +
+        'font-size:14px;cursor:pointer;min-height:40px;touch-action:manipulation">Ahora no</button>' +
+    '</div>';
+  document.body.appendChild(b);
+}
+
+async function triggerPWAInstall() {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  const { outcome } = await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  dismissInstallBanner();
+  if (outcome === 'accepted') toast('✓ App instalada · buscala en tu pantalla de inicio');
+}
+
+function dismissInstallBanner() {
+  sessionStorage.setItem('install_banner_dismissed', '1');
+  const b = document.getElementById('pwa-install-banner');
+  if (b) { b.style.transition = 'opacity .25s'; b.style.opacity = '0'; setTimeout(() => b.remove(), 250); }
+}
+
+// Instrucciones manuales para iOS (Safari no tiene beforeinstallprompt)
+window.addEventListener('load', () => {
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isStandalone = window.navigator.standalone ||
+    window.matchMedia('(display-mode: standalone)').matches;
+  if (isIOS && !isStandalone && !sessionStorage.getItem('ios_tip_dismissed')) {
+    setTimeout(showIOSTip, 4000); // esperar 4s para no interrumpir al usuario
+  }
+});
+
+function showIOSTip() {
+  if (document.getElementById('ios-install-tip')) return;
+  const t = document.createElement('div');
+  t.id = 'ios-install-tip';
+  t.style.cssText = [
+    'position:fixed', 'bottom:0', 'left:0', 'right:0', 'z-index:9001',
+    'background:#1F4E79', 'color:white', 'border-radius:20px 20px 0 0',
+    'padding:24px 20px 44px', 'font-family:-apple-system,sans-serif',
+    'box-shadow:0 -4px 20px rgba(0,0,0,.3)'
+  ].join(';');
+  t.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">' +
+      '<div style="font-weight:700;font-size:20px">📲 Instalá la app</div>' +
+      '<button onclick="dismissIOSTip()" style="background:rgba(255,255,255,.2);border:none;' +
+        'border-radius:50%;width:48px;height:48px;font-size:22px;cursor:pointer;color:white;' +
+        'display:flex;align-items:center;justify-content:center;touch-action:manipulation">✕</button>' +
+    '</div>' +
+    '<div style="font-size:17px;line-height:2.2">' +
+      '1· Tocá el botón <strong>Compartir</strong> ⬆️ abajo en Safari<br>' +
+      '2· Elegí <strong>"Agregar a pantalla de inicio"</strong><br>' +
+      '3· Tocá <strong>Agregar</strong>' +
+    '</div>' +
+    '<div style="margin-top:20px;padding:16px;background:rgba(255,255,255,.15);' +
+      'border-radius:14px;font-size:15px;line-height:1.6;opacity:.92">' +
+      'Una vez instalada, la app se abre directamente sin Safari y funciona sin internet.' +
+    '</div>';
+  document.body.appendChild(t);
+}
+
+function dismissIOSTip() {
+  sessionStorage.setItem('ios_tip_dismissed', '1');
+  const t = document.getElementById('ios-install-tip');
+  if (t) {
+    t.style.transition = 'transform .3s';
+    t.style.transform = 'translateY(100%)';
+    setTimeout(() => t.remove(), 300);
+  }
+}
 </script>
 
 </body>
