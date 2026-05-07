@@ -29,6 +29,11 @@ export default async function handler(req, res) {
 
     const companyName = 'Sirex Médica';
 
+    // Buscar PDF del catálogo (si existe product_id en el lead)
+    // Por ahora usamos un PDF hardcodeado para testing
+    const pdfUrl = 'https://fycclwcxutzxraheggsj.supabase.co/storage/v1/object/public/pdfs-catalogo/sirex/catalogo-holter-ecg.pdf';
+    const productName = 'Holter ECG - Familia Completa';
+
     // Preparar el email
     const emailData = {
       from: `${emailConfig.from_name} <${emailConfig.from_email}>`,
@@ -65,14 +70,17 @@ export default async function handler(req, res) {
                 Estamos a tu disposición para cualquier consulta que tengas sobre nuestros equipos médicos.
               </p>
 
-              <!-- CTA Button (ejemplo para futuros PDFs) -->
-              <!-- 
+              <!-- CTA Button para descargar PDF -->
               <div style="text-align: center; margin: 30px 0;">
-                <a href="LINK_AL_PDF" style="display: inline-block; background-color: #0ea5e9; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
-                  📄 Descargar Catálogo
+                <a href="${pdfUrl}" style="display: inline-block; background-color: #0ea5e9; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
+                  📄 Descargar ${productName}
                 </a>
               </div>
-              -->
+
+              <p style="margin: 20px 0 0; font-size: 14px; line-height: 1.6; color: #6b7280; text-align: center;">
+                También podés acceder al catálogo desde este enlace:<br>
+                <a href="${pdfUrl}" style="color: #0ea5e9; text-decoration: none;">${pdfUrl}</a>
+              </p>
             </div>
 
             <!-- Footer -->
