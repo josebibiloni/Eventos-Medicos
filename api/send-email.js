@@ -20,43 +20,14 @@ export default async function handler(req, res) {
 
     console.log('New lead captured:', record);
 
-    // Supabase client
-    const SUPABASE_URL = 'https://fycclwcxutzxraheggsj.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5Y2Nsd2N4dXR6eHJhaGVnZ3NqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzE1MjMsImV4cCI6MjA5MzE0NzUyM30.5wj_Z62ENoe26mx0o-FsvH5zPls2nNxTxiPxTTB_J-8';
+    // CONFIGURACIÓN HARDCODEADA PARA TESTING
+    const emailConfig = {
+      resend_api_key: 're_2cAjMZ9V_HnQ7R61eYzWtvXnbfF2jHrqF',
+      from_email: 'onboarding@resend.dev',
+      from_name: 'Sirex Médica'
+    };
 
-    // Obtener configuración de email
-    const emailConfigResponse = await fetch(
-      `${SUPABASE_URL}/rest/v1/email_configs?company_id=eq.${record.company_id}&active=eq.true&select=*`,
-      {
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-        }
-      }
-    );
-
-    const emailConfigs = await emailConfigResponse.json();
-    
-    if (!emailConfigs || emailConfigs.length === 0) {
-      console.log('No email config found for company:', record.company_id);
-      return res.status(200).json({ message: 'No email config' });
-    }
-
-    const emailConfig = emailConfigs[0];
-
-    // Obtener nombre de la empresa
-    const companyResponse = await fetch(
-      `${SUPABASE_URL}/rest/v1/companies?id=eq.${record.company_id}&select=name`,
-      {
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-        }
-      }
-    );
-
-    const companies = await companyResponse.json();
-    const companyName = companies[0]?.name || 'Nuestro equipo';
+    const companyName = 'Sirex Médica';
 
     // Preparar el email
     const emailData = {
